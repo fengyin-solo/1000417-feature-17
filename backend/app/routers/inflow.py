@@ -5,7 +5,13 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import (
+    ActionResult,
+    BatchBackfillPayload,
+    BatchBackfillResult,
+    EntryPayload,
+    PageResult,
+)
 from app.services.inflow import InflowService
 
 router = APIRouter(prefix="/api/inflow", tags=["进水监测"])
@@ -30,6 +36,13 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出进水监测清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "inflow", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条进水记录明细；不存在时给出可读的错误说明。"""
@@ -48,6 +61,34 @@ def create_entry(payload: EntryPayload) -> ActionResult:
     return ActionResult(ok=True, message="进水记录已登记", entry=entry)
 
 
+@router.post("/batch-backfill", response_model=BatchBackfillResult)
+def batch_backfill(payload: BatchBackfillPayload) -> BatchBackfillResult:
+    """化验结果批量回填：逐条校验酸碱度范围与进水流量，不合格只标记不落库。
+
+    重复回填、悬浮物为空、批次部分失败都会在 items 里逐条回报原因；
+    批次整体允许部分成功，message 汇总成功/失败条数。
+    """
+    if not payload.items:
+        return BatchBackfillResult(ok=False, message="回填批次为空，请至少选择一条记录")
+    raw_items = [{"id": item.id, "values": item.values} for item in payload.items]
+    results, succeeded, failed = service.batch_backfill(raw_items)
+    total = len(results)
+    if not failed:
+        message = f"批次回填完成：{succeeded}/{total} 条成功落库"
+    elif succeeded:
+        message = f"批次部分失败：{succeeded}/{total} 条成功落库，{failed} 条未通过校验未落库"
+    else:
+        message = f"批次全部未通过校验：{failed}/{total} 条未落库"
+    return BatchBackfillResult(
+        ok=not failed,
+        message=message,
+        total=total,
+        succeeded=succeeded,
+        failed=failed,
+        items=results,
+    )
+
+
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     """对单条进水记录执行开始检测、确认记录、作废记录；不允许的动作会被拦下并说明原因。"""
@@ -56,10 +97,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出进水监测清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "inflow", "total": total, "items": items}

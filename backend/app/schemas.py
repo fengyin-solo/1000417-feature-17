@@ -28,6 +28,41 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class BatchBackfillItem(BaseModel):
+    """批量回填批次中的单条化验结果：id 定位记录，values 携带四项化验值。"""
+
+    id: int | None = None
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+class BatchBackfillPayload(BaseModel):
+    """化验结果批量回填入参：一次提交多条记录的化验结果。"""
+
+    items: list[BatchBackfillItem] = Field(default_factory=list)
+    remark: str | None = None
+
+
+class BatchBackfillItemResult(BaseModel):
+    """单条回填结果：成功时回传落库后的记录，失败时回传提交值与逐条原因。"""
+
+    id: int | None = None
+    code: str | None = None
+    ok: bool
+    reason: str = ""
+    values: dict[str, Any] = Field(default_factory=dict)
+    entry: dict[str, Any] | None = None
+
+
+class BatchBackfillResult(BaseModel):
+    """批次回填结果：批次汇总与逐条结果保持一致，允许部分成功部分失败。"""
+
+    ok: bool
+    message: str
+    total: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    items: list[BatchBackfillItemResult] = Field(default_factory=list)
+
 
 class PlantEntry(BaseModel):
     """工艺单元明细结构。"""
