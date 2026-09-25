@@ -28,6 +28,39 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class LabResultItem(BaseModel):
+    """一条待回填的化验结果：按记录 id 定位，values 放化学需氧量、氨氮浓度、悬浮物、酸碱度。"""
+
+    entry_id: int | None = None
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+class LabResultBatchPayload(BaseModel):
+    """批量回填请求：一次携带多条进水记录的化验结果。"""
+
+    items: list[LabResultItem] = Field(default_factory=list)
+
+
+class LabResultRow(BaseModel):
+    """单条回填结果：成功时带回记录快照，失败时只给原因、不落库。"""
+
+    entry_id: int | None = None
+    ok: bool
+    message: str
+    entry: dict[str, Any] | None = None
+
+
+class LabResultBatchResult(BaseModel):
+    """批量回填汇总：整体结论加逐条明细，允许部分成功。"""
+
+    ok: bool
+    message: str
+    total: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    results: list[LabResultRow] = Field(default_factory=list)
+
+
 
 class PlantEntry(BaseModel):
     """工艺单元明细结构。"""

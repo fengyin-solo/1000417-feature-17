@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import ActionResult, EntryPayload, LabResultBatchPayload, LabResultBatchResult, PageResult
 from app.services.inflow import InflowService
 
 router = APIRouter(prefix="/api/inflow", tags=["进水监测"])
@@ -46,6 +46,17 @@ def create_entry(payload: EntryPayload) -> ActionResult:
     if missing:
         return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
     return ActionResult(ok=True, message="进水记录已登记", entry=entry)
+
+
+@router.post("/lab-results", response_model=LabResultBatchResult)
+def backfill_lab_results(payload: LabResultBatchPayload) -> LabResultBatchResult:
+    """批量回填化验结果：逐条校验酸碱度与进水流量，不合格只标记原因不落库，批次允许部分失败。"""
+    if not payload.items:
+        return LabResultBatchResult(ok=False, message="未提交任何化验结果，请至少选择一条进水记录")
+    summary = service.backfill_lab_results(
+        [{"entry_id": item.entry_id, "values": item.values} for item in payload.items]
+    )
+    return LabResultBatchResult(**summary)
 
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
